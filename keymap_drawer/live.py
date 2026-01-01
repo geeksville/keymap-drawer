@@ -227,11 +227,12 @@ class SvgWidget(QWidget):
         """Return the preferred size"""
         return self.renderer.defaultSize()
     
-    def find_key_rect(self, key_text: str) -> ET.Element | None:
-        """Find the rect element for a given key text"""
+    def find_key_rects(self, key_text: str) -> list[ET.Element]:
+        """Find all rect elements for a given key text (e.g., both left and right Shift)"""
         # Register namespace to avoid ns0 prefixes
         ET.register_namespace('', 'http://www.w3.org/2000/svg')
         
+        rects = []
         # Search for text elements with class "key" (including "key tap" and "key shifted")
         for text_elem in self.svg_root.iter('{http://www.w3.org/2000/svg}text'):
             class_attr = text_elem.get('class', '')
@@ -240,9 +241,11 @@ class SvgWidget(QWidget):
             if 'key' in class_attr:
                 # Check direct text content
                 if text_elem.text and text_elem.text.strip() == key_text:
-                    return self._get_rect_from_text_element(text_elem)
+                    rect = self._get_rect_from_text_element(text_elem)
+                    if rect is not None:
+                        rects.append(rect)
         
-        return None
+        return rects
     
     def _get_rect_from_text_element(self, text_elem: ET.Element) -> ET.Element | None:
         """Get the rect element from a text element's parent group"""
@@ -261,32 +264,40 @@ class SvgWidget(QWidget):
         return None
     
     def update_key_state(self, key_text: str, is_held: bool) -> None:
-        """Update the held state of a key"""
-        rect = self.find_key_rect(key_text)
-        if rect is not None:
+        """Update the held state of a key (applies to all matching keys)"""
+        rects = self.find_key_rects(key_text)
+        if not rects:
+            return
+        
+        # Update all matching rects
+        for rect in rects:
             class_attr = rect.get('class', '')
             classes = set(class_attr.split())
             
             if is_held:
                 classes.add('held')
-                self.held_keys.add(key_text)
             else:
                 classes.discard('held')
-                self.held_keys.discard(key_text)
             
             # Update the class attribute
             rect.set('class', ' '.join(sorted(classes)))
-            
-            # Register namespace before converting to string
-            ET.register_namespace('', 'http://www.w3.org/2000/svg')
-            ET.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
-            
-            # Reload the SVG from the modified tree
-            svg_bytes = ET.tostring(self.svg_root, encoding='unicode')
-            self.renderer.load(svg_bytes.encode('utf-8'))
-            
-            # Trigger repaint
-            self.update()
+        
+        # Update held keys tracking
+        if is_held:
+            self.held_keys.add(key_text)
+        else:
+            self.held_keys.discard(key_text)
+        
+        # Register namespace before converting to string
+        ET.register_namespace('', 'http://www.w3.org/2000/svg')
+        ET.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
+        
+        # Reload the SVG from the modified tree
+        svg_bytes = ET.tostring(self.svg_root, encoding='unicode')
+        self.renderer.load(svg_bytes.encode('utf-8'))
+        
+        # Trigger repaint
+        self.update()
 
 
 class KeymapWindow(QMainWindow):
