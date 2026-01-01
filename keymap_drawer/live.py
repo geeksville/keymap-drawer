@@ -4,11 +4,11 @@ from argparse import Namespace
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from threading import Thread
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGraphicsOpacityEffect
 from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
+from PyQt6.QtGui import QCloseEvent, QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
 from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject, QTimer
 
 from keymap_drawer.config import Config
@@ -20,9 +20,9 @@ KEYPRESS_VIEW_SECS = 2.5
 try:
     import evdev
     from evdev import InputDevice, categorize, ecodes
-    EVDEV_AVAILABLE = True
+    evdev_available = True
 except ImportError:
-    EVDEV_AVAILABLE = False
+    evdev_available = False
     if TYPE_CHECKING:
         evdev = None  # type: ignore
 
@@ -69,17 +69,17 @@ QT_KEY_MAP = {
 class KeyboardMonitor(QObject):
     """Monitor keyboard events using evdev in background thread"""
     
-    key_pressed = pyqtSignal(str)
-    key_released = pyqtSignal(str)
+    key_pressed: pyqtSignal = pyqtSignal(str)
+    key_released: pyqtSignal = pyqtSignal(str)
     
     def __init__(self):
         super().__init__()
         self.stop_flag = False
-        self.thread: Thread | None = None
+        self.my_thread: Thread | None = None
     
     def find_keyboard_device(self) -> "InputDevice | None":
         """Find a keyboard device from available input devices"""
-        if not EVDEV_AVAILABLE:
+        if not evdev_available:
             return None
         
         try:
@@ -140,15 +140,15 @@ class KeyboardMonitor(QObject):
             finally:
                 device.close()
         
-        self.thread = Thread(target=event_loop, daemon=True)
-        self.thread.start()
+        self.my_thread = Thread(target=event_loop, daemon=True)
+        self.my_thread.start()
         return True
     
     def stop(self):
         """Stop monitoring keyboard events"""
         self.stop_flag = True
-        if self.thread:
-            self.thread.join(timeout=1.0)
+        if self.my_thread:
+            self.my_thread.join(timeout=1.0)
 
 
 class SvgWidget(QWidget):
@@ -200,6 +200,7 @@ class SvgWidget(QWidget):
         # Render the SVG
         self.renderer.render(painter)
     
+    @override
     def sizeHint(self) -> QSize:
         """Return the preferred size"""
         return self.renderer.defaultSize()
@@ -290,7 +291,7 @@ class KeymapWindow(QMainWindow):
         self.setCentralWidget(self.svg_widget)
         
         # Use QGraphicsOpacityEffect for Wayland compatibility
-        self.opacity_effect = QGraphicsOpacityEffect(self)
+        self.opacity_effect: QGraphicsOpacityEffect = QGraphicsOpacityEffect(self)
         self.opacity_effect.setOpacity(1.0)
         self.svg_widget.setGraphicsEffect(self.opacity_effect)
         
@@ -305,7 +306,7 @@ class KeymapWindow(QMainWindow):
         
         # Timer to hide window after inactivity
         self.hide_timer = QTimer(self)
-        self.hide_timer.timeout.connect(self.on_hide_timeout)
+        _ = self.hide_timer.timeout.connect(self.on_hide_timeout)
         self.hide_timer.setSingleShot(True)
         
         # Track currently held keys
@@ -315,15 +316,16 @@ class KeymapWindow(QMainWindow):
         print(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
         print("Press 'x' to exit. Drag window to reposition it.")
     
+    @override
     def showEvent(self, a0: QShowEvent | None) -> None:
         """Called when window is shown"""
         super().showEvent(a0)
         
         # Try to start global keyboard monitoring
-        if EVDEV_AVAILABLE:
+        if evdev_available:
             self.keyboard_monitor = KeyboardMonitor()
-            self.keyboard_monitor.key_pressed.connect(self.on_global_key_press)
-            self.keyboard_monitor.key_released.connect(self.on_global_key_release)
+            _ = self.keyboard_monitor.key_pressed.connect(self.on_global_key_press)
+            _ = self.keyboard_monitor.key_released.connect(self.on_global_key_release)
             
             if self.keyboard_monitor.start():
                 print("Global keyboard monitoring active - keys captured even when window not focused")
@@ -340,7 +342,7 @@ class KeymapWindow(QMainWindow):
         """Handle global key press from keyboard monitor"""
         if key_char == 'x':
             print("Exiting...")
-            self.close()
+            _ = self.close()
         else:
             # Show window and track this key as held
             self.held_keys.add(key_char)
@@ -372,13 +374,15 @@ class KeymapWindow(QMainWindow):
         if not self.held_keys:
             self.opacity_effect.setOpacity(0.0)
     
-    def closeEvent(self, event) -> None:
+    @override
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Clean up when window is closed"""
         self.hide_timer.stop()
         if self.keyboard_monitor:
             self.keyboard_monitor.stop()
-        super().closeEvent(event)
-        
+        super().closeEvent(a0)
+
+    @override    
     def keyPressEvent(self, a0: QKeyEvent | None) -> None:
         """Handle key press - exit on 'x', highlight other keys"""
         if a0 is None:
@@ -400,6 +404,7 @@ class KeymapWindow(QMainWindow):
             self.show_window_temporarily()
             self.svg_widget.update_key_state(key_char, is_held=True)
     
+    @override
     def keyReleaseEvent(self, a0: QKeyEvent | None) -> None:
         """Handle key release - remove highlight"""
         if a0 is None:
@@ -418,31 +423,34 @@ class KeymapWindow(QMainWindow):
             if not self.held_keys:
                 self.start_hide_timer()
     
-    def mousePressEvent(self, event: QMouseEvent | None) -> None:
+    @override
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:
         """Handle mouse press to start dragging"""
-        if event is not None and event.button() == Qt.MouseButton.LeftButton:
+        if a0 is not None and a0.button() == Qt.MouseButton.LeftButton:
             # On Wayland, use startSystemMove() which is compositor-aware
             # On X11, fall back to manual dragging
-            if hasattr(self.windowHandle(), 'startSystemMove') and self.windowHandle():
+            h = self.windowHandle()
+            if h and hasattr(h, 'startSystemMove'):
                 # Try Wayland-native move first
-                self.windowHandle().startSystemMove()
+                _ = h.startSystemMove()
             else:
                 # Fall back to manual dragging for X11
-                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+                self.drag_position = a0.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            a0.accept()
     
-    def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
+    @override
+    def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:
         """Handle mouse move to drag the window (X11 only, Wayland uses startSystemMove)"""
-        if event is not None and event.buttons() == Qt.MouseButton.LeftButton and self.drag_position is not None:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
+        if a0 is not None and a0.buttons() == Qt.MouseButton.LeftButton and self.drag_position is not None:
+            self.move(a0.globalPosition().toPoint() - self.drag_position)
+            a0.accept()
     
-    def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
+    @override
+    def mouseReleaseEvent(self, a0: QMouseEvent | None) -> None:
         """Handle mouse release to stop dragging"""
-        if event is not None:
+        if a0 is not None:
             self.drag_position = None
-            event.accept()
-
+            a0.accept()
 
 def live(args: Namespace, config: Config) -> None:  # pylint: disable=unused-argument
     """Show a live view of keypresses"""
