@@ -6,8 +6,8 @@ import xml.etree.ElementTree as ET
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
+from PyQt6.QtCore import QSize, Qt, QPoint
 
 from keymap_drawer.config import Config
 
@@ -140,10 +140,14 @@ class KeymapWindow(QMainWindow):
     
     svg_widget: SvgWidget
     keyboard_listener: "keyboard.Listener | None"
+    drag_position: QPoint | None
     
     def __init__(self, svg_path: Path):
         super().__init__()
         self.setWindowTitle("Keymap Drawer - Live View")
+        
+        # Remove window border and frame
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         
         # Enable transparent background for the window
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -157,6 +161,9 @@ class KeymapWindow(QMainWindow):
         
         # Global keyboard listener (will be started when window is shown)
         self.keyboard_listener = None
+        
+        # Track drag position for moving the window
+        self.drag_position = None
         
         svg_size = self.svg_widget.size()
         print(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
@@ -259,6 +266,24 @@ class KeymapWindow(QMainWindow):
         
         if key_text and key_text.lower() != 'x':
             self.svg_widget.update_key_state(key_text, is_held=False)
+    
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
+        """Handle mouse press to start dragging"""
+        if event is not None and event.button() == Qt.MouseButton.LeftButton:
+            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+    
+    def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
+        """Handle mouse move to drag the window"""
+        if event is not None and event.buttons() == Qt.MouseButton.LeftButton and self.drag_position is not None:
+            self.move(event.globalPosition().toPoint() - self.drag_position)
+            event.accept()
+    
+    def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
+        """Handle mouse release to stop dragging"""
+        if event is not None:
+            self.drag_position = None
+            event.accept()
 
 
 def live(args: Namespace, config: Config) -> None:  # pylint: disable=unused-argument
