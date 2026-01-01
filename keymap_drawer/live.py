@@ -23,6 +23,45 @@ except ImportError:
     if TYPE_CHECKING:
         evdev = None  # type: ignore
 
+# Map evdev key names to SVG labels
+EVDEV_KEY_MAP = {
+    'leftshift': 'Shift',
+    'rightshift': 'Shift',
+    'leftctrl': 'Control',
+    'rightctrl': 'Control',
+    'leftalt': 'Alt',
+    'rightalt': 'AltGr',
+    'leftmeta': 'Meta',
+    'rightmeta': 'Meta',
+    'capslock': 'Caps',
+    'tab': 'Tab',
+    'enter': 'Enter',
+    'space': 'Space',
+    'backspace': 'Backspace',
+    'delete': 'Delete',
+    'esc': 'Esc',
+    'escape': 'Esc',
+}
+
+# Map Qt key codes to SVG labels
+QT_KEY_MAP = {
+    Qt.Key.Key_Shift: 'Shift',
+    Qt.Key.Key_Control: 'Control',
+    Qt.Key.Key_Alt: 'Alt',
+    Qt.Key.Key_AltGr: 'AltGr',
+    Qt.Key.Key_Meta: 'Meta',
+    Qt.Key.Key_Super_L: 'Meta',
+    Qt.Key.Key_Super_R: 'Meta',
+    Qt.Key.Key_CapsLock: 'Caps',
+    Qt.Key.Key_Tab: 'Tab',
+    Qt.Key.Key_Return: 'Enter',
+    Qt.Key.Key_Enter: 'Enter',
+    Qt.Key.Key_Space: 'Space',
+    Qt.Key.Key_Backspace: 'Backspace',
+    Qt.Key.Key_Delete: 'Delete',
+    Qt.Key.Key_Escape: 'Esc',
+}
+
 
 class KeyboardMonitor(QObject):
     """Monitor keyboard events using evdev in background thread"""
@@ -82,10 +121,13 @@ class KeyboardMonitor(QObject):
                         
                         # Strip KEY_ prefix and convert to lowercase
                         if keycode.startswith('KEY_'):
-                            key_char = keycode[4:].lower()
+                            key_name = keycode[4:].lower()
                             
-                            # Only handle single characters
-                            if len(key_char) == 1:
+                            # Check if it's a special key that needs mapping
+                            key_char = EVDEV_KEY_MAP.get(key_name, key_name)
+                            
+                            # Only handle single characters or mapped special keys
+                            if len(key_char) == 1 or key_name in EVDEV_KEY_MAP:
                                 if key_event.keystate == key_event.key_down:
                                     self.key_pressed.emit(key_char)
                                 elif key_event.keystate == key_event.key_up:
@@ -299,26 +341,34 @@ class KeymapWindow(QMainWindow):
         """Handle key press - exit on 'x', highlight other keys"""
         if a0 is None:
             return
-            
-        key_text = a0.text()
         
-        if key_text.lower() == 'x':
+        # Try to map special keys first
+        key_char = QT_KEY_MAP.get(a0.key())
+        if not key_char:
+            # Fall back to text for regular keys
+            key_char = a0.text()
+        
+        if key_char and key_char.lower() == 'x':
             print("Exiting...")
             _ = self.close()
             return
         
-        if key_text:
-            self.svg_widget.update_key_state(key_text, is_held=True)
+        if key_char:
+            self.svg_widget.update_key_state(key_char, is_held=True)
     
     def keyReleaseEvent(self, a0: QKeyEvent | None) -> None:
         """Handle key release - remove highlight"""
         if a0 is None:
             return
-            
-        key_text = a0.text()
         
-        if key_text and key_text.lower() != 'x':
-            self.svg_widget.update_key_state(key_text, is_held=False)
+        # Try to map special keys first
+        key_char = QT_KEY_MAP.get(a0.key())
+        if not key_char:
+            # Fall back to text for regular keys
+            key_char = a0.text()
+        
+        if key_char and key_char.lower() != 'x':
+            self.svg_widget.update_key_state(key_char, is_held=False)
     
     def mousePressEvent(self, event: QMouseEvent | None) -> None:
         """Handle mouse press to start dragging"""
