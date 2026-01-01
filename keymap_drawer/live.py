@@ -360,6 +360,8 @@ class KeymapWindow(QMainWindow):
         """Make the window visible and cancel any pending hide timer"""
         self.opacity_effect.setOpacity(1.0)
         self.hide_timer.stop()
+        # Raise window to top of stack (especially important on Wayland)
+        self.raise_()
     
     def start_hide_timer(self) -> None:
         """Start timer to hide window after KEYPRESS_VIEW_SECS"""
