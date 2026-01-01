@@ -101,44 +101,61 @@ class KeyboardMonitor(QObject):
     
     def start(self) -> bool:
         """Start monitoring keyboard events in background thread"""
-        device = self.find_keyboard_device()
-        if not device:
-            return False
-        
-        print(f"Monitoring keyboard: {device.name}")
         
         def event_loop():
-            """Background thread that monitors keyboard events"""
-            try:
-                for event in device.read_loop():
-                    if self.stop_flag:
-                        break
-                    
-                    if event.type == ecodes.EV_KEY:
-                        key_event = categorize(event)
+            """Background thread that monitors keyboard events with auto-reconnect"""
+            import time
+            
+            while not self.stop_flag:
+                # Try to find a keyboard device
+                device = self.find_keyboard_device()
+                
+                if not device:
+                    # No keyboard found, wait 10 seconds and try again
+                    print("No keyboard device found, retrying in 10 seconds...")
+                    time.sleep(10)
+                    continue
+                
+                print(f"Monitoring keyboard: {device.name}")
+                
+                try:
+                    for event in device.read_loop():
+                        if self.stop_flag:
+                            break
                         
-                        # Map keycode to character
-                        keycode = key_event.keycode
-                        if isinstance(keycode, list):
-                            keycode = keycode[0]
-                        
-                        # Strip KEY_ prefix and convert to lowercase
-                        if keycode.startswith('KEY_'):
-                            key_name = keycode[4:].lower()
+                        if event.type == ecodes.EV_KEY:
+                            key_event = categorize(event)
                             
-                            # Check if it's a special key that needs mapping
-                            key_char = EVDEV_KEY_MAP.get(key_name, key_name)
+                            # Map keycode to character
+                            keycode = key_event.keycode
+                            if isinstance(keycode, list):
+                                keycode = keycode[0]
                             
-                            # Only handle single characters or mapped special keys
-                            if len(key_char) == 1 or key_name in EVDEV_KEY_MAP:
-                                if key_event.keystate == key_event.key_down:
-                                    self.key_pressed.emit(key_char)
-                                elif key_event.keystate == key_event.key_up:
-                                    self.key_released.emit(key_char)
-            except Exception as e:
-                print(f"Keyboard monitoring error: {e}")
-            finally:
-                device.close()
+                            # Strip KEY_ prefix and convert to lowercase
+                            if keycode.startswith('KEY_'):
+                                key_name = keycode[4:].lower()
+                                
+                                # Check if it's a special key that needs mapping
+                                key_char = EVDEV_KEY_MAP.get(key_name, key_name)
+                                
+                                # Only handle single characters or mapped special keys
+                                if len(key_char) == 1 or key_name in EVDEV_KEY_MAP:
+                                    if key_event.keystate == key_event.key_down:
+                                        self.key_pressed.emit(key_char)
+                                    elif key_event.keystate == key_event.key_up:
+                                        self.key_released.emit(key_char)
+                except Exception as e:
+                    print(f"Keyboard disconnected: {e}")
+                finally:
+                    try:
+                        device.close()
+                    except Exception:
+                        pass  # Device may already be closed
+                
+                # If we got here due to an error, wait a bit before reconnecting
+                if not self.stop_flag:
+                    print("Attempting to reconnect in 10 seconds...")
+                    time.sleep(10)
         
         self.my_thread = Thread(target=event_loop, daemon=True)
         self.my_thread.start()
@@ -326,12 +343,8 @@ class KeymapWindow(QMainWindow):
             self.keyboard_monitor = KeyboardMonitor()
             _ = self.keyboard_monitor.key_pressed.connect(self.on_global_key_press)
             _ = self.keyboard_monitor.key_released.connect(self.on_global_key_release)
-            
-            if self.keyboard_monitor.start():
-                print("Global keyboard monitoring active - keys captured even when window not focused")
-            else:
-                print("Could not start global monitoring - window must be focused to capture keys")
-                self.keyboard_monitor = None
+            self.keyboard_monitor.start()
+            print("Global keyboard monitoring starting - keys captured even when window not focused")
         else:
             print("Global monitoring unavailable - window must be focused to capture keys")
             print("Tip: Install evdev with: poetry install -E live")
