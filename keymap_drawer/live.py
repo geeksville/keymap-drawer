@@ -266,7 +266,7 @@ class SvgWidget(QWidget):
                 return parent
         return None
     
-    def update_key_state(self, key_text: str, is_held: bool) -> None:
+    def update_held_keys(self, key_text: str, is_held: bool) -> None:
         """Update the held state of a key (applies to all matching keys)"""
         rects = self.find_key_rects(key_text)
         if not rects:
@@ -290,7 +290,40 @@ class SvgWidget(QWidget):
             self.held_keys.add(key_text)
         else:
             self.held_keys.discard(key_text)
+    
+    def update_shift_labels(self) -> None:
+        """Toggle between tap and shifted labels based on whether Shift is held"""
+        # Check if shift is currently held (case-insensitive)
+        shift_held = any(k.lower() == 'shift' for k in self.held_keys)
         
+        # Find all groups that contain both tap and shifted labels
+        for group in self.svg_root.iter('{http://www.w3.org/2000/svg}g'):
+            # Look for text elements with "key tap" and "key shifted" classes
+            tap_elem = None
+            shifted_elem = None
+            
+            for text_elem in group.findall('{http://www.w3.org/2000/svg}text'):
+                class_attr = text_elem.get('class', '')
+                if 'key tap' in class_attr:
+                    tap_elem = text_elem
+                elif 'key shifted' in class_attr:
+                    shifted_elem = text_elem
+            
+            # If both elements exist, toggle visibility
+            if tap_elem is not None and shifted_elem is not None:
+                if shift_held:
+                    # Show shifted, hide tap
+                    tap_elem.set('opacity', '0')
+                    shifted_elem.set('opacity', '1')
+                    # Fix y coordinate to 0 for Qt compatibility
+                    shifted_elem.set('y', '0')
+                else:
+                    # Show tap, hide shifted
+                    tap_elem.set('opacity', '1')
+                    shifted_elem.set('opacity', '0')
+    
+    def _reload_svg(self) -> None:
+        """Reload the SVG renderer from the modified tree and trigger repaint"""
         # Register namespace before converting to string
         ET.register_namespace('', 'http://www.w3.org/2000/svg')
         ET.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
@@ -301,6 +334,17 @@ class SvgWidget(QWidget):
         
         # Trigger repaint
         self.update()
+    
+    def update_key_state(self, key_text: str, is_held: bool) -> None:
+        """Update key highlighting and shift label display"""
+        # Update key highlighting
+        self.update_held_keys(key_text, is_held)
+        
+        # Update shift label visibility
+        self.update_shift_labels()
+        
+        # Reload and repaint
+        self._reload_svg()
 
 
 class KeymapWindow(QMainWindow):
@@ -392,6 +436,11 @@ class KeymapWindow(QMainWindow):
         # Replace the SVG widget
         old_widget = self.svg_widget
         self.svg_widget = SvgWidget(svg_content)
+        
+        # Initialize shift labels before first render to fix y coordinates
+        self.svg_widget.update_shift_labels()
+        self.svg_widget._reload_svg()
+        
         self.setCentralWidget(self.svg_widget)
         
         # Reapply opacity effect
@@ -413,7 +462,7 @@ class KeymapWindow(QMainWindow):
             self.keyboard_monitor = KeyboardMonitor()
             _ = self.keyboard_monitor.key_pressed.connect(self.on_global_key_press)
             _ = self.keyboard_monitor.key_released.connect(self.on_global_key_release)
-            self.keyboard_monitor.start()
+            _ = self.keyboard_monitor.start()
             print("Global keyboard monitoring starting - keys captured even when window not focused")
         else:
             print("Global monitoring unavailable - window must be focused to capture keys")
