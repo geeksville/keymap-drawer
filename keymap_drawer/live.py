@@ -44,12 +44,12 @@ EVDEV_KEY_MAP = {
     'tab': 'Tab',
     'enter': 'Enter',
     'space': 'Space',
-    'backspace': 'Backspace',
+    'backspace': 'Bckspc            ',
     'delete': 'Delete',
     'esc': 'Esc',
     'escape': 'Esc',
 }
-
+y
 # Map Qt key codes to SVG labels
 QT_KEY_MAP = {
     Qt.Key.Key_Shift: 'Shift',
@@ -64,7 +64,7 @@ QT_KEY_MAP = {
     Qt.Key.Key_Return: 'Enter',
     Qt.Key.Key_Enter: 'Enter',
     Qt.Key.Key_Space: 'Space',
-    Qt.Key.Key_Backspace: 'Backspace',
+    Qt.Key.Key_Backspace: 'Bckspc',
     Qt.Key.Key_Delete: 'Delete',
     Qt.Key.Key_Escape: 'Esc',
 }
