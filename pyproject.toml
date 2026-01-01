@@ -15,7 +15,7 @@ dependencies = [
     "tree-sitter ~= 0.25.0",
     "tree-sitter-devicetree ~= 0.14.0",
     "pyparsing ~= 3.2",
-    "pyqt6 (>=6.10.1,<7.0.0)"
+    "pyqt6 (>=6.10.1,<7.0.0)",
 ]
 
 [project.optional-dependencies]
