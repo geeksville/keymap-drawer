@@ -233,14 +233,17 @@ class SvgWidget(QWidget):
         ET.register_namespace('', 'http://www.w3.org/2000/svg')
         
         rects = []
+        # Normalize key text for case-insensitive comparison
+        key_text_lower = key_text.lower()
+        
         # Search for text elements with class "key" (including "key tap" and "key shifted")
         for text_elem in self.svg_root.iter('{http://www.w3.org/2000/svg}text'):
             class_attr = text_elem.get('class', '')
             
             # Check if this is a key-related text element
             if 'key' in class_attr:
-                # Check direct text content
-                if text_elem.text and text_elem.text.strip() == key_text:
+                # Check direct text content (case-insensitive)
+                if text_elem.text and text_elem.text.strip().lower() == key_text_lower:
                     rect = self._get_rect_from_text_element(text_elem)
                     if rect is not None:
                         rects.append(rect)
