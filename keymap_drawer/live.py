@@ -11,14 +11,6 @@ from PyQt6.QtCore import QSize, Qt, QPoint
 
 from keymap_drawer.config import Config
 
-# Try to import pynput for global keyboard monitoring
-try:
-    from pynput import keyboard
-    PYNPUT_AVAILABLE = True
-except ImportError:
-    PYNPUT_AVAILABLE = False
-    keyboard = None  # type: ignore
-
 
 class SvgWidget(QWidget):
     """Custom widget for rendering SVG with high quality
@@ -139,14 +131,13 @@ class KeymapWindow(QMainWindow):
     """Main window for displaying the keymap SVG"""
     
     svg_widget: SvgWidget
-    keyboard_listener: "keyboard.Listener | None"
     drag_position: QPoint | None
     
     def __init__(self, svg_path: Path):
         super().__init__()
         self.setWindowTitle("Keymap Drawer - Live View")
         
-        # Remove window border and frame
+        # Remove window border and frame, keep on top
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         
         # Enable transparent background for the window
@@ -159,87 +150,17 @@ class KeymapWindow(QMainWindow):
         # Resize window to fit content
         self.adjustSize()
         
-        # Global keyboard listener (will be started when window is shown)
-        self.keyboard_listener = None
-        
         # Track drag position for moving the window
         self.drag_position = None
         
         svg_size = self.svg_widget.size()
         print(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
-        if PYNPUT_AVAILABLE:
-            print("Press 'x' to exit, or press other keys to see them highlighted...")
-            print("Global keyboard monitoring is active - keys will be captured even when window is not focused")
-        else:
-            print("Press 'x' to exit, or press other keys to see them highlighted...")
-            print("(Window must be focused to capture keys)")
-    
-    def start_global_keyboard_listener(self) -> None:
-        """Start listening to global keyboard events"""
-        if not PYNPUT_AVAILABLE or keyboard is None:
-            return
-            
-        try:
-            self.keyboard_listener = keyboard.Listener(
-                on_press=self.on_global_key_press,
-                on_release=self.on_global_key_release
-            )
-            self.keyboard_listener.start()
-        except Exception as e:
-            print(f"Failed to start global keyboard listener: {e}")
-            print("Falling back to window-focused keyboard events only")
-    
-    def on_global_key_press(self, key: "keyboard.Key | keyboard.KeyCode | None") -> bool | None:
-        """Handle global key press events"""
-        if key is None or keyboard is None:
-            return None
-            
-        # Get the character representation
-        key_char = None
-        if isinstance(key, keyboard.KeyCode):
-            key_char = key.char
-        elif isinstance(key, keyboard.Key):
-            # Handle special keys if needed
-            if key == keyboard.Key.esc:
-                key_char = 'x'  # Treat Esc as exit
-        
-        if key_char:
-            if key_char.lower() == 'x':
-                print("Exiting...")
-                self.close()
-                return False  # Stop listener
-            else:
-                self.svg_widget.update_key_state(key_char, is_held=True)
-        
-        return None  # Continue listening
-    
-    def on_global_key_release(self, key: "keyboard.Key | keyboard.KeyCode | None") -> bool | None:
-        """Handle global key release events"""
-        if key is None or keyboard is None:
-            return None
-            
-        # Get the character representation
-        key_char = None
-        if isinstance(key, keyboard.KeyCode):
-            key_char = key.char
-        
-        if key_char and key_char.lower() != 'x':
-            self.svg_widget.update_key_state(key_char, is_held=False)
-        
-        return None  # Continue listening
-    
-    def closeEvent(self, event) -> None:
-        """Clean up when window is closed"""
-        if self.keyboard_listener:
-            self.keyboard_listener.stop()
-        super().closeEvent(event)
+        print("Click on window to focus it, then press keys to see them highlighted.")
+        print("Press 'x' to exit. Drag window to reposition it.")
     
     def showEvent(self, a0: QShowEvent | None) -> None:
         """Called when window is shown"""
         super().showEvent(a0)
-        # Start global keyboard listener after window is shown
-        if PYNPUT_AVAILABLE:
-            self.start_global_keyboard_listener()
         print("Window is now visible!")
         
     def keyPressEvent(self, a0: QKeyEvent | None) -> None:
