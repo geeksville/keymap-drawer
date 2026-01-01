@@ -9,9 +9,12 @@ from typing import TYPE_CHECKING
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
-from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject
+from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject, QTimer
 
 from keymap_drawer.config import Config
+
+# Window visibility timeout in seconds
+KEYPRESS_VIEW_SECS = 2.5
 
 # Try to import evdev for global keyboard monitoring
 try:
@@ -269,6 +272,8 @@ class KeymapWindow(QMainWindow):
     svg_widget: SvgWidget
     drag_position: QPoint | None
     keyboard_monitor: KeyboardMonitor | None
+    hide_timer: QTimer
+    held_keys: set[str]
     
     def __init__(self, svg_path: Path):
         super().__init__()
@@ -292,6 +297,14 @@ class KeymapWindow(QMainWindow):
         
         # Keyboard monitor for global events
         self.keyboard_monitor = None
+        
+        # Timer to hide window after inactivity
+        self.hide_timer = QTimer(self)
+        self.hide_timer.timeout.connect(self.on_hide_timeout)
+        self.hide_timer.setSingleShot(True)
+        
+        # Track currently held keys
+        self.held_keys = set()
         
         svg_size = self.svg_widget.size()
         print(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
@@ -324,15 +337,37 @@ class KeymapWindow(QMainWindow):
             print("Exiting...")
             self.close()
         else:
+            # Show window and track this key as held
+            self.held_keys.add(key_char)
+            self.show_window_temporarily()
             self.svg_widget.update_key_state(key_char, is_held=True)
     
     def on_global_key_release(self, key_char: str) -> None:
         """Handle global key release from keyboard monitor"""
         if key_char != 'x':
+            self.held_keys.discard(key_char)
             self.svg_widget.update_key_state(key_char, is_held=False)
+            # Start hide timer if no keys are held
+            if not self.held_keys:
+                self.start_hide_timer()
+    
+    def show_window_temporarily(self) -> None:
+        """Show the window and cancel any pending hide timer"""
+        self.show()
+        self.hide_timer.stop()
+    
+    def start_hide_timer(self) -> None:
+        """Start timer to hide window after KEYPRESS_VIEW_SECS"""
+        self.hide_timer.start(int(KEYPRESS_VIEW_SECS * 1000))
+    
+    def on_hide_timeout(self) -> None:
+        """Hide the window when timer expires"""
+        if not self.held_keys:
+            self.hide()
     
     def closeEvent(self, event) -> None:
         """Clean up when window is closed"""
+        self.hide_timer.stop()
         if self.keyboard_monitor:
             self.keyboard_monitor.stop()
         super().closeEvent(event)
@@ -354,6 +389,8 @@ class KeymapWindow(QMainWindow):
             return
         
         if key_char:
+            self.held_keys.add(key_char)
+            self.show_window_temporarily()
             self.svg_widget.update_key_state(key_char, is_held=True)
     
     def keyReleaseEvent(self, a0: QKeyEvent | None) -> None:
@@ -368,7 +405,11 @@ class KeymapWindow(QMainWindow):
             key_char = a0.text()
         
         if key_char and key_char.lower() != 'x':
+            self.held_keys.discard(key_char)
             self.svg_widget.update_key_state(key_char, is_held=False)
+            # Start hide timer if no keys are held
+            if not self.held_keys:
+                self.start_hide_timer()
     
     def mousePressEvent(self, event: QMouseEvent | None) -> None:
         """Handle mouse press to start dragging"""
