@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from threading import Thread
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGraphicsOpacityEffect
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
 from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject, QTimer
@@ -289,6 +289,11 @@ class KeymapWindow(QMainWindow):
         self.svg_widget = SvgWidget(svg_path)
         self.setCentralWidget(self.svg_widget)
         
+        # Use QGraphicsOpacityEffect for Wayland compatibility
+        self.opacity_effect = QGraphicsOpacityEffect(self)
+        self.opacity_effect.setOpacity(1.0)
+        self.svg_widget.setGraphicsEffect(self.opacity_effect)
+        
         # Resize window to fit content
         self.adjustSize()
         
@@ -352,8 +357,8 @@ class KeymapWindow(QMainWindow):
                 self.start_hide_timer()
     
     def show_window_temporarily(self) -> None:
-        """Show the window and cancel any pending hide timer"""
-        self.show()
+        """Make the window visible and cancel any pending hide timer"""
+        self.opacity_effect.setOpacity(1.0)
         self.hide_timer.stop()
     
     def start_hide_timer(self) -> None:
@@ -361,9 +366,9 @@ class KeymapWindow(QMainWindow):
         self.hide_timer.start(int(KEYPRESS_VIEW_SECS * 1000))
     
     def on_hide_timeout(self) -> None:
-        """Hide the window when timer expires"""
+        """Make the window transparent when timer expires"""
         if not self.held_keys:
-            self.hide()
+            self.opacity_effect.setOpacity(0.0)
     
     def closeEvent(self, event) -> None:
         """Clean up when window is closed"""
