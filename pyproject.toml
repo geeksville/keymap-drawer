@@ -14,7 +14,8 @@ dependencies = [
     "pydantic-settings ~= 2.2",
     "tree-sitter ~= 0.25.0",
     "tree-sitter-devicetree ~= 0.14.0",
-    "pyparsing ~= 3.2"
+    "pyparsing ~= 3.2",
+    "pyqt6 (>=6.10.1,<7.0.0)"
 ]
 
 [project.optional-dependencies]
@@ -62,3 +63,8 @@ line_length = 120
 
 [tool.deptry]
 pep621_dev_dependency_groups = ["dev", "lsp"]
+
+[dependency-groups]
+dev = [
+    "pyqt6-stubs (>=20250824,<20250825)"
+]

@@ -16,6 +16,7 @@ from keymap_drawer import logger
 from keymap_drawer.config import Config, DrawConfig
 from keymap_drawer.draw import KeymapDrawer
 from keymap_drawer.keymap import KeymapData
+from keymap_drawer.live import live
 from keymap_drawer.parse import KanataKeymapParser, QmkJsonParser, ZmkKeymapParser
 
 
@@ -269,6 +270,8 @@ def main() -> None:
         default=sys.stdout,
     )
 
+    live_p = subparsers.add_parser("live", help="show a live view of keypresses")
+
     args = parser.parse_args()
 
     if args.debug:
@@ -283,6 +286,8 @@ def main() -> None:
             parse(args, config)
         case "dump-config":
             dump_config(args, config)
+        case "live":
+            live(args, config)
 
 
 if __name__ == "__main__":
