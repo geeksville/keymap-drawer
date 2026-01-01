@@ -3,13 +3,107 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 import xml.etree.ElementTree as ET
+from threading import Thread
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
-from PyQt6.QtCore import QSize, Qt, QPoint
+from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject
 
 from keymap_drawer.config import Config
+
+# Try to import evdev for global keyboard monitoring
+try:
+    import evdev
+    from evdev import InputDevice, categorize, ecodes
+    EVDEV_AVAILABLE = True
+except ImportError:
+    EVDEV_AVAILABLE = False
+    if TYPE_CHECKING:
+        evdev = None  # type: ignore
+
+
+class KeyboardMonitor(QObject):
+    """Monitor keyboard events using evdev in background thread"""
+    
+    key_pressed = pyqtSignal(str)
+    key_released = pyqtSignal(str)
+    
+    def __init__(self):
+        super().__init__()
+        self.stop_flag = False
+        self.thread: Thread | None = None
+    
+    def find_keyboard_device(self) -> "InputDevice | None":
+        """Find a keyboard device from available input devices"""
+        if not EVDEV_AVAILABLE:
+            return None
+        
+        try:
+            devices = [InputDevice(path) for path in evdev.list_devices()]
+            for device in devices:
+                # Look for a device with keyboard capabilities
+                caps = device.capabilities()
+                if ecodes.EV_KEY in caps and any(
+                    key in caps[ecodes.EV_KEY] 
+                    for key in [ecodes.KEY_A, ecodes.KEY_B, ecodes.KEY_C]
+                ):
+                    return device
+        except (PermissionError, OSError) as e:
+            print(f"Cannot access input devices: {e}")
+            print("Tip: Add your user to the 'input' group with: sudo usermod -a -G input $USER")
+            return None
+        
+        return None
+    
+    def start(self) -> bool:
+        """Start monitoring keyboard events in background thread"""
+        device = self.find_keyboard_device()
+        if not device:
+            return False
+        
+        print(f"Monitoring keyboard: {device.name}")
+        
+        def event_loop():
+            """Background thread that monitors keyboard events"""
+            try:
+                for event in device.read_loop():
+                    if self.stop_flag:
+                        break
+                    
+                    if event.type == ecodes.EV_KEY:
+                        key_event = categorize(event)
+                        
+                        # Map keycode to character
+                        keycode = key_event.keycode
+                        if isinstance(keycode, list):
+                            keycode = keycode[0]
+                        
+                        # Strip KEY_ prefix and convert to lowercase
+                        if keycode.startswith('KEY_'):
+                            key_char = keycode[4:].lower()
+                            
+                            # Only handle single characters
+                            if len(key_char) == 1:
+                                if key_event.keystate == key_event.key_down:
+                                    self.key_pressed.emit(key_char)
+                                elif key_event.keystate == key_event.key_up:
+                                    self.key_released.emit(key_char)
+            except Exception as e:
+                print(f"Keyboard monitoring error: {e}")
+            finally:
+                device.close()
+        
+        self.thread = Thread(target=event_loop, daemon=True)
+        self.thread.start()
+        return True
+    
+    def stop(self):
+        """Stop monitoring keyboard events"""
+        self.stop_flag = True
+        if self.thread:
+            self.thread.join(timeout=1.0)
 
 
 class SvgWidget(QWidget):
@@ -132,6 +226,7 @@ class KeymapWindow(QMainWindow):
     
     svg_widget: SvgWidget
     drag_position: QPoint | None
+    keyboard_monitor: KeyboardMonitor | None
     
     def __init__(self, svg_path: Path):
         super().__init__()
@@ -153,15 +248,52 @@ class KeymapWindow(QMainWindow):
         # Track drag position for moving the window
         self.drag_position = None
         
+        # Keyboard monitor for global events
+        self.keyboard_monitor = None
+        
         svg_size = self.svg_widget.size()
         print(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
-        print("Click on window to focus it, then press keys to see them highlighted.")
         print("Press 'x' to exit. Drag window to reposition it.")
     
     def showEvent(self, a0: QShowEvent | None) -> None:
         """Called when window is shown"""
         super().showEvent(a0)
+        
+        # Try to start global keyboard monitoring
+        if EVDEV_AVAILABLE:
+            self.keyboard_monitor = KeyboardMonitor()
+            self.keyboard_monitor.key_pressed.connect(self.on_global_key_press)
+            self.keyboard_monitor.key_released.connect(self.on_global_key_release)
+            
+            if self.keyboard_monitor.start():
+                print("Global keyboard monitoring active - keys captured even when window not focused")
+            else:
+                print("Could not start global monitoring - window must be focused to capture keys")
+                self.keyboard_monitor = None
+        else:
+            print("Global monitoring unavailable - window must be focused to capture keys")
+            print("Tip: Install evdev with: poetry install -E live")
+        
         print("Window is now visible!")
+    
+    def on_global_key_press(self, key_char: str) -> None:
+        """Handle global key press from keyboard monitor"""
+        if key_char == 'x':
+            print("Exiting...")
+            self.close()
+        else:
+            self.svg_widget.update_key_state(key_char, is_held=True)
+    
+    def on_global_key_release(self, key_char: str) -> None:
+        """Handle global key release from keyboard monitor"""
+        if key_char != 'x':
+            self.svg_widget.update_key_state(key_char, is_held=False)
+    
+    def closeEvent(self, event) -> None:
+        """Clean up when window is closed"""
+        if self.keyboard_monitor:
+            self.keyboard_monitor.stop()
+        super().closeEvent(event)
         
     def keyPressEvent(self, a0: QKeyEvent | None) -> None:
         """Handle key press - exit on 'x', highlight other keys"""

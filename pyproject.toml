@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["mypy", "pylint", "black", "pylint-pydantic", "types-pyyaml", "deptry (>=0.22.0)", "hjson"]
 lsp = ["python-lsp-server"]
+live = ["evdev ~= 1.7"]
 
 [project.scripts]
 keymap = 'keymap_drawer.__main__:main'

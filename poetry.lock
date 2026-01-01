@@ -168,6 +168,18 @@ importlib-metadata = ">=3.6"
 typing_extensions = ">=4.6"
 
 [[package]]
+name = "evdev"
+version = "1.9.2"
+description = "Bindings to the Linux input handling subsystem"
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "extra == \"live\""
+files = [
+    {file = "evdev-1.9.2.tar.gz", hash = "sha256:5d3278892ce1f92a74d6bf888cc8525d9f68af85dbe336c95d1c87fb8f423069"},
+]
+
+[[package]]
 name = "hjson"
 version = "3.1.0"
 description = "Hjson, a user interface for JSON."
@@ -1127,9 +1139,10 @@ type = ["pytest-mypy"]
 
 [extras]
 dev = ["black", "deptry", "hjson", "mypy", "pylint", "pylint-pydantic", "types-pyyaml"]
+live = ["evdev"]
 lsp = ["python-lsp-server"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "293864d4e658e04f4f1d2ee04c84efb33c3720cd4ae8dd9810a1ad1472a6f554"
+content-hash = "a144868e56946776d18352c0c9acadebbfceba48ff417bdaa5a0321ed8b1db68"
