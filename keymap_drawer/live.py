@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent
+from PyQt6.QtGui import QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor
 from PyQt6.QtCore import QSize, Qt
 
 from keymap_drawer.config import Config
@@ -31,6 +31,9 @@ class SvgWidget(QWidget):
         self.svg_path = svg_path
         self.held_keys = set()
         
+        # Enable transparent background for the widget
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
         # Parse the SVG XML
         self.svg_tree = ET.parse(str(svg_path))
         self.svg_root = self.svg_tree.getroot()
@@ -45,6 +48,9 @@ class SvgWidget(QWidget):
     def paintEvent(self, event: QPaintEvent | None) -> None:
         """Custom paint event with high-quality rendering"""
         painter = QPainter(self)
+        
+        # Fill background with 30% transparent (70% opaque)
+        painter.fillRect(self.rect(), QColor(128, 128, 128, 179))
         
         # Enable all quality rendering hints
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -129,6 +135,9 @@ class KeymapWindow(QMainWindow):
     def __init__(self, svg_path: Path):
         super().__init__()
         self.setWindowTitle("Keymap Drawer - Live View")
+        
+        # Enable transparent background for the window
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         # Create and set the custom SVG widget
         self.svg_widget = SvgWidget(svg_path)
