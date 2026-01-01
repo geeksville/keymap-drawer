@@ -1,10 +1,13 @@
 
 import sys
 from argparse import Namespace
+from io import StringIO
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from threading import Thread
 from typing import TYPE_CHECKING, override
+
+import yaml
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGraphicsOpacityEffect
 from PyQt6.QtSvg import QSvgRenderer
@@ -12,6 +15,7 @@ from PyQt6.QtGui import QCloseEvent, QKeyEvent, QPainter, QShowEvent, QPaintEven
 from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject, QTimer
 
 from keymap_drawer.config import Config
+from keymap_drawer.draw import KeymapDrawer
 
 # Window visibility timeout in seconds
 KEYPRESS_VIEW_SECS = 2.5
@@ -178,25 +182,25 @@ class SvgWidget(QWidget):
     """
     
     renderer: QSvgRenderer
-    svg_path: Path
+    svg_content: str
     svg_tree: ET.ElementTree
     svg_root: ET.Element
     held_keys: set[str]
     
-    def __init__(self, svg_path: Path):
+    def __init__(self, svg_content: str):
         super().__init__()
-        self.svg_path = svg_path
+        self.svg_content = svg_content
         self.held_keys = set()
         
         # Enable transparent background for the widget
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
-        # Parse the SVG XML
-        self.svg_tree = ET.parse(str(svg_path))
-        self.svg_root = self.svg_tree.getroot()
+        # Parse the SVG XML from string
+        self.svg_root = ET.fromstring(svg_content)
+        self.svg_tree = ET.ElementTree(self.svg_root)
         
         # Load initial SVG
-        self.renderer = QSvgRenderer(str(svg_path))
+        self.renderer = QSvgRenderer(svg_content.encode('utf-8'))
         
         # Set a fixed size based on the SVG's default size
         svg_size = self.renderer.defaultSize()
@@ -294,7 +298,7 @@ class KeymapWindow(QMainWindow):
     hide_timer: QTimer
     held_keys: set[str]
     
-    def __init__(self, svg_path: Path):
+    def __init__(self, svg_content: str):
         super().__init__()
         self.setWindowTitle("Keymap Drawer - Live View")
         
@@ -305,7 +309,7 @@ class KeymapWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         # Create and set the custom SVG widget
-        self.svg_widget = SvgWidget(svg_path)
+        self.svg_widget = SvgWidget(svg_content)
         self.setCentralWidget(self.svg_widget)
         
         # Use QGraphicsOpacityEffect for Wayland compatibility
@@ -466,23 +470,66 @@ class KeymapWindow(QMainWindow):
             self.drag_position = None
             a0.accept()
 
+def render_svg(yaml_path: str, config: Config) -> str:
+    """Render an SVG from a keymap YAML file using KeymapDrawer.
+    
+    Args:
+        yaml_path: Path to the keymap YAML file
+        config: Configuration object for drawing
+        
+    Returns:
+        SVG content as a string
+    """
+    # Load the YAML file
+    with open(yaml_path, 'r', encoding='utf-8') as f:
+        yaml_data = yaml.safe_load(f)
+    
+    # Extract layout and layers from YAML
+    layout = yaml_data.get("layout", {})
+    assert layout, "A layout must be specified in the keymap YAML file"
+    
+    layers = yaml_data.get("layers", {})
+    combos = yaml_data.get("combos", [])
+    
+    # Create output stream
+    output = StringIO()
+    
+    # Create drawer and generate SVG
+    drawer = KeymapDrawer(
+        config=config,
+        out=output,
+        layers=layers,
+        layout=layout,
+        combos=combos,
+    )
+    drawer.print_board()
+    
+    # Get the SVG content
+    svg_content = output.getvalue()
+    output.close()
+    
+    return svg_content
+
 def live(args: Namespace, config: Config) -> None:  # pylint: disable=unused-argument
     """Show a live view of keypresses"""
-    # Path to the SVG file
-    svg_path = Path("test/miryoku-num.svg")
+    # Path to the YAML keymap file
+    yaml_path = "test/miryoku.yaml"
     
     # Check if the file exists
-    if not svg_path.exists():
-        print(f"Error: SVG file not found at {svg_path}")
+    if not Path(yaml_path).exists():
+        print(f"Error: Keymap YAML file not found at {yaml_path}")
         sys.exit(1)
     
-    print(f"Loading SVG from: {svg_path.absolute()}")
+    print(f"Loading keymap from: {Path(yaml_path).absolute()}")
+    
+    # Render SVG from YAML
+    svg_content = render_svg(yaml_path, config)
     
     # Create the Qt application
     app = QApplication(sys.argv)
     
     # Create and show the window
-    window = KeymapWindow(svg_path)
+    window = KeymapWindow(svg_content)
     window.show()
     
     print("Starting Qt event loop...")
