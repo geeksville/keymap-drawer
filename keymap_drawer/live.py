@@ -373,11 +373,18 @@ class KeymapWindow(QMainWindow):
     def mousePressEvent(self, event: QMouseEvent | None) -> None:
         """Handle mouse press to start dragging"""
         if event is not None and event.button() == Qt.MouseButton.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            # On Wayland, use startSystemMove() which is compositor-aware
+            # On X11, fall back to manual dragging
+            if hasattr(self.windowHandle(), 'startSystemMove') and self.windowHandle():
+                # Try Wayland-native move first
+                self.windowHandle().startSystemMove()
+            else:
+                # Fall back to manual dragging for X11
+                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
     
     def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
-        """Handle mouse move to drag the window"""
+        """Handle mouse move to drag the window (X11 only, Wayland uses startSystemMove)"""
         if event is not None and event.buttons() == Qt.MouseButton.LeftButton and self.drag_position is not None:
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
