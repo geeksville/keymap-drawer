@@ -87,6 +87,7 @@ class KeyboardMonitor(QObject):
             for device in devices:
                 # Look for a device with keyboard capabilities
                 caps = device.capabilities()
+                # print(f"Checking device: {device.name} with capabilities: {caps}")
                 if ecodes.EV_KEY in caps and any(
                     key in caps[ecodes.EV_KEY] 
                     for key in [ecodes.KEY_A, ecodes.KEY_B, ecodes.KEY_C]
