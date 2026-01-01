@@ -308,10 +308,22 @@ class KeymapWindow(QMainWindow):
     keyboard_monitor: KeyboardMonitor | None
     hide_timer: QTimer
     held_keys: set[str]
+    yaml_data: dict
+    config: Config
+    layer_names: list[str]
+    current_layer_index: int
     
-    def __init__(self, svg_content: str):
+    def __init__(self, yaml_data: dict, config: Config):
         super().__init__()
         self.setWindowTitle("Keymap Drawer - Live View")
+        
+        # Store YAML data and config for layer regeneration
+        self.yaml_data = yaml_data
+        self.config = config
+        
+        # Get list of layer names and start with first layer
+        self.layer_names = list(yaml_data.get("layers", {}).keys())
+        self.current_layer_index = 0
         
         # Remove window border and frame, keep on top
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
@@ -319,7 +331,8 @@ class KeymapWindow(QMainWindow):
         # Enable transparent background for the window
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
-        # Create and set the custom SVG widget
+        # Generate initial SVG and create widget
+        svg_content = self._render_current_layer()
         self.svg_widget = SvgWidget(svg_content)
         self.setCentralWidget(self.svg_widget)
         
@@ -347,7 +360,45 @@ class KeymapWindow(QMainWindow):
         
         svg_size = self.svg_widget.size()
         print(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
-        print("Press 'x' to exit. Drag window to reposition it.")
+        if self.layer_names:
+            print(f"Showing layer: {self.layer_names[self.current_layer_index]}")
+        print("Press 'y' to cycle layers, 'x' to exit. Drag window to reposition it.")
+    
+    def _render_current_layer(self) -> str:
+        """Render SVG for the current layer."""
+        if not self.layer_names:
+            # No layers, render empty
+            return render_svg(self.yaml_data, self.config)
+        
+        layer_name = self.layer_names[self.current_layer_index]
+        return render_svg(self.yaml_data, self.config, layer_name)
+    
+    def next_layer(self) -> None:
+        """Cycle to the next layer and regenerate the display."""
+        if not self.layer_names:
+            return
+        
+        # Move to next layer (with wraparound)
+        self.current_layer_index = (self.current_layer_index + 1) % len(self.layer_names)
+        layer_name = self.layer_names[self.current_layer_index]
+        print(f"Switching to layer: {layer_name}")
+        
+        # Regenerate SVG for new layer
+        svg_content = self._render_current_layer()
+        
+        # Replace the SVG widget
+        old_widget = self.svg_widget
+        self.svg_widget = SvgWidget(svg_content)
+        self.setCentralWidget(self.svg_widget)
+        
+        # Reapply opacity effect
+        self.svg_widget.setGraphicsEffect(self.opacity_effect)
+        
+        # Clean up old widget
+        old_widget.deleteLater()
+        
+        # Resize window to fit new content
+        self.adjustSize()
     
     @override
     def showEvent(self, a0: QShowEvent | None) -> None:
@@ -413,7 +464,7 @@ class KeymapWindow(QMainWindow):
 
     @override    
     def keyPressEvent(self, a0: QKeyEvent | None) -> None:
-        """Handle key press - exit on 'x', highlight other keys"""
+        """Handle key press - exit on 'x', cycle layers on 'y', highlight other keys"""
         if a0 is None:
             return
         
@@ -426,6 +477,10 @@ class KeymapWindow(QMainWindow):
         if key_char and key_char.lower() == 'x':
             print("Exiting...")
             _ = self.close()
+            return
+        
+        if key_char and key_char.lower() == 'y':
+            self.next_layer()
             return
         
         if key_char:
@@ -481,20 +536,17 @@ class KeymapWindow(QMainWindow):
             self.drag_position = None
             a0.accept()
 
-def render_svg(yaml_path: str, config: Config) -> str:
-    """Render an SVG from a keymap YAML file using KeymapDrawer.
+def render_svg(yaml_data: dict, config: Config, layer_name: str | None = None) -> str:
+    """Render an SVG from keymap YAML data using KeymapDrawer.
     
     Args:
-        yaml_path: Path to the keymap YAML file
+        yaml_data: Parsed YAML keymap data
         config: Configuration object for drawing
+        layer_name: Optional layer name to display (if None, shows all layers)
         
     Returns:
         SVG content as a string
     """
-    # Load the YAML file
-    with open(yaml_path, 'r', encoding='utf-8') as f:
-        yaml_data = yaml.safe_load(f)
-    
     # Extract layout and layers from YAML
     layout = yaml_data.get("layout", {})
     assert layout, "A layout must be specified in the keymap YAML file"
@@ -513,7 +565,12 @@ def render_svg(yaml_path: str, config: Config) -> str:
         layout=layout,
         combos=combos,
     )
-    drawer.print_board()
+    
+    # Draw specific layer or all layers
+    if layer_name:
+        drawer.print_board(draw_layers=[layer_name])
+    else:
+        drawer.print_board()
     
     # Get the SVG content
     svg_content = output.getvalue()
@@ -533,14 +590,15 @@ def live(args: Namespace, config: Config) -> None:  # pylint: disable=unused-arg
     
     print(f"Loading keymap from: {Path(yaml_path).absolute()}")
     
-    # Render SVG from YAML
-    svg_content = render_svg(yaml_path, config)
+    # Load the YAML file
+    with open(yaml_path, 'r', encoding='utf-8') as f:
+        yaml_data = yaml.safe_load(f)
     
     # Create the Qt application
     app = QApplication(sys.argv)
     
     # Create and show the window
-    window = KeymapWindow(svg_content)
+    window = KeymapWindow(yaml_data, config)
     window.show()
     
     print("Starting Qt event loop...")
