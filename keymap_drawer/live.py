@@ -1,4 +1,4 @@
-
+import logging
 from evdev import InputEvent
 from evdev.device import InputDevice
 import sys
@@ -18,6 +18,8 @@ from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject, QTimer
 
 from keymap_drawer.config import Config
 from keymap_drawer.draw import KeymapDrawer
+
+logger = logging.getLogger(__name__)
 
 # Window visibility timeout in seconds
 KEYPRESS_VIEW_SECS = 2.5
@@ -86,7 +88,7 @@ class KeyboardMonitor(QObject):
     
     def __init__(self):
         super().__init__()
-        self.stop_flag = False
+        self.stop_flag: bool = False
         self.my_thread: Thread | None = None
     
     def find_keyboard_device(self) -> "InputDevice[str] | None":
@@ -106,8 +108,8 @@ class KeyboardMonitor(QObject):
                 ):
                     return device
         except (PermissionError, OSError) as e:
-            print(f"Cannot access input devices: {e}")
-            print("Tip: Add your user to the 'input' group with: sudo usermod -a -G input $USER")
+            logger.error(f"Cannot access input devices: {e}")
+            logger.error("Tip: Add your user to the 'input' group with: sudo usermod -a -G input $USER")
             return None
         
         return None
@@ -125,11 +127,11 @@ class KeyboardMonitor(QObject):
                 
                 if not device:
                     # No keyboard found, wait 10 seconds and try again
-                    print("No keyboard device found, retrying in 10 seconds...")
+                    logger.warning("No keyboard device found, retrying in 10 seconds (Ensure user has access to /dev/input/event*: sudo usermod -aG input $USER)...")
                     time.sleep(10)
                     continue
                 
-                print(f"Monitoring keyboard: {device.name}")
+                logger.info(f"Monitoring keyboard: {device.name}")
                 
                 try:
                     for event in cast(Iterator[InputEvent], device.read_loop()):
@@ -158,7 +160,7 @@ class KeyboardMonitor(QObject):
                                     elif key_event.keystate == key_event.key_up:
                                         self.key_released.emit(key_char)
                 except Exception as e:
-                    print(f"Keyboard disconnected: {e}")
+                    logger.warning(f"Keyboard disconnected: {e}")
                 finally:
                     try:
                         device.close()
@@ -167,7 +169,7 @@ class KeyboardMonitor(QObject):
                 
                 # If we got here due to an error, wait a bit before reconnecting
                 if not self.stop_flag:
-                    print("Attempting to reconnect in 10 seconds...")
+                    logger.info("Attempting to reconnect in 10 seconds...")
                     time.sleep(10)
         
         self.my_thread = Thread(target=event_loop, daemon=True)
@@ -417,10 +419,10 @@ class KeymapWindow(QMainWindow):
         self.held_keys = set()
         
         svg_size = self.svg_widget.size()
-        print(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
+        logger.info(f"Window created with size: {svg_size.width()}x{svg_size.height()}")
         if self.layer_names:
-            print(f"Showing layer: {self.layer_names[self.current_layer_index]}")
-        print("Press 'y' to cycle layers, 'x' to exit. Drag window to reposition it.")
+            logger.info(f"Showing layer: {self.layer_names[self.current_layer_index]}")
+        logger.info("Press 'y' to cycle layers, 'x' to exit. Drag window to reposition it.")
     
     def _render_current_layer(self) -> str:
         """Render SVG for the current layer."""
@@ -439,7 +441,7 @@ class KeymapWindow(QMainWindow):
         # Move to next layer (with wraparound)
         self.current_layer_index = (self.current_layer_index + 1) % len(self.layer_names)
         layer_name = self.layer_names[self.current_layer_index]
-        print(f"Switching to layer: {layer_name}")
+        logger.info(f"Switching to layer: {layer_name}")
         
         # Regenerate SVG for new layer
         svg_content = self._render_current_layer()
@@ -474,32 +476,25 @@ class KeymapWindow(QMainWindow):
             _ = self.keyboard_monitor.key_pressed.connect(self.on_global_key_press)
             _ = self.keyboard_monitor.key_released.connect(self.on_global_key_release)
             _ = self.keyboard_monitor.start()
-            print("Global keyboard monitoring starting - keys captured even when window not focused")
+            logger.info("Global keyboard monitoring starting - keys captured even when window not focused")
         else:
-            print("Global monitoring unavailable - window must be focused to capture keys")
-            print("Tip: Install evdev with: poetry install -E live")
+            logger.warning("Global monitoring unavailable - window must be focused to capture keys (YOU PROBABLY DON'T WANT THIS)")
+            logger.info("Install with: pipx install \"keymap[live]\"")
         
-        print("Window is now visible!")
-    
     def on_global_key_press(self, key_char: str) -> None:
         """Handle global key press from keyboard monitor"""
-        if key_char == 'x':
-            print("Exiting...")
-            _ = self.close()
-        else:
-            # Show window and track this key as held
-            self.held_keys.add(key_char)
-            self.show_window_temporarily()
-            self.svg_widget.update_key_state(key_char, is_held=True)
+        # Show window and track this key as held
+        self.held_keys.add(key_char)
+        self.show_window_temporarily()
+        self.svg_widget.update_key_state(key_char, is_held=True)
     
     def on_global_key_release(self, key_char: str) -> None:
         """Handle global key release from keyboard monitor"""
-        if key_char != 'x':
-            self.held_keys.discard(key_char)
-            self.svg_widget.update_key_state(key_char, is_held=False)
-            # Start hide timer if no keys are held
-            if not self.held_keys:
-                self.start_hide_timer()
+        self.held_keys.discard(key_char)
+        self.svg_widget.update_key_state(key_char, is_held=False)
+        # Start hide timer if no keys are held
+        if not self.held_keys:
+            self.start_hide_timer()
     
     def show_window_temporarily(self) -> None:
         """Make the window visible and cancel any pending hide timer"""
@@ -538,7 +533,7 @@ class KeymapWindow(QMainWindow):
             key_char = a0.text()
         
         if key_char and key_char.lower() == 'x':
-            print("Exiting...")
+            logger.info("Exiting...")
             _ = self.close()
             return
         
@@ -643,15 +638,34 @@ def render_svg(yaml_data: dict, config: Config, layer_name: str | None = None) -
 
 def live(args: Namespace, config: Config) -> None:  # pylint: disable=unused-argument
     """Show a live view of keypresses"""
+    # Customize layer label styling by creating a new DrawConfig with modified svg_extra_style
+    custom_draw_config = config.draw_config.model_copy(
+        update={
+            "svg_extra_style": """
+                /* Override layer label styling for better visibility */
+                text.label {
+                    font-size: 24px;
+                    fill: #ffffff;
+                    stroke: #000000;
+                    stroke-width: 2;
+                    letter-spacing: 2px;
+                }
+    """
+        }
+    )
+    
+    # Create a new Config with the modified draw_config
+    config = config.model_copy(update={"draw_config": custom_draw_config})
+    
     # Path to the YAML keymap file
     yaml_path = "test/miryoku.yaml"
     
     # Check if the file exists
     if not Path(yaml_path).exists():
-        print(f"Error: Keymap YAML file not found at {yaml_path}")
+        logger.error(f"Keymap YAML file not found at {yaml_path}")
         sys.exit(1)
     
-    print(f"Loading keymap from: {Path(yaml_path).absolute()}")
+    logger.info(f"Loading keymap from: {Path(yaml_path).absolute()}")
     
     # Load the YAML file
     with open(yaml_path, 'r', encoding='utf-8') as f:
@@ -664,7 +678,7 @@ def live(args: Namespace, config: Config) -> None:  # pylint: disable=unused-arg
     window = KeymapWindow(yaml_data, config)
     window.show()
     
-    print("Starting Qt event loop...")
+    logger.info("Starting Qt event loop...")
     # Start the event loop
     exit_code = app.exec()
     sys.exit(exit_code)

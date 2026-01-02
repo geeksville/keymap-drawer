@@ -14,14 +14,13 @@ dependencies = [
     "pydantic-settings ~= 2.2",
     "tree-sitter ~= 0.25.0",
     "tree-sitter-devicetree ~= 0.14.0",
-    "pyparsing ~= 3.2",
-    "pyqt6 (>=6.10.1,<7.0.0)",
+    "pyparsing ~= 3.2"
 ]
 
 [project.optional-dependencies]
 dev = ["mypy", "pylint", "black", "pylint-pydantic", "types-pyyaml", "deptry (>=0.22.0)", "hjson"]
 lsp = ["python-lsp-server"]
-live = ["evdev ~= 1.7"]
+live = ["evdev >= 1.7", "pyqt6 >= 6.10.1"]
 
 [project.scripts]
 keymap = 'keymap_drawer.__main__:main'
