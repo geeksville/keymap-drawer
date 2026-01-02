@@ -1,11 +1,13 @@
 
+from evdev import InputEvent
+from evdev.device import InputDevice
 import sys
 from argparse import Namespace
 from io import StringIO
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from threading import Thread
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Any, Iterator, cast, override
 
 import yaml
 
@@ -19,6 +21,12 @@ from keymap_drawer.draw import KeymapDrawer
 
 # Window visibility timeout in seconds
 KEYPRESS_VIEW_SECS = 2.5
+
+# Background transparency (0.0 = fully opaque, 1.0 = fully transparent)
+TRANSPARENCY = 0.80
+
+# SVG scaling factor for window size
+SVG_SCALE = 0.75
 
 # Try to import evdev for global keyboard monitoring
 try:
@@ -49,7 +57,7 @@ EVDEV_KEY_MAP = {
     'esc': 'Esc',
     'escape': 'Esc',
 }
-y
+
 # Map Qt key codes to SVG labels
 QT_KEY_MAP = {
     Qt.Key.Key_Shift: 'Shift',
@@ -81,7 +89,7 @@ class KeyboardMonitor(QObject):
         self.stop_flag = False
         self.my_thread: Thread | None = None
     
-    def find_keyboard_device(self) -> "InputDevice | None":
+    def find_keyboard_device(self) -> "InputDevice[str] | None":
         """Find a keyboard device from available input devices"""
         if not evdev_available:
             return None
@@ -113,7 +121,7 @@ class KeyboardMonitor(QObject):
             
             while not self.stop_flag:
                 # Try to find a keyboard device
-                device = self.find_keyboard_device()
+                device: InputDevice[str] | None = self.find_keyboard_device()
                 
                 if not device:
                     # No keyboard found, wait 10 seconds and try again
@@ -124,7 +132,7 @@ class KeyboardMonitor(QObject):
                 print(f"Monitoring keyboard: {device.name}")
                 
                 try:
-                    for event in device.read_loop():
+                    for event in cast(Iterator[InputEvent], device.read_loop()):
                         if self.stop_flag:
                             break
                         
@@ -202,16 +210,19 @@ class SvgWidget(QWidget):
         # Load initial SVG
         self.renderer = QSvgRenderer(svg_content.encode('utf-8'))
         
-        # Set a fixed size based on the SVG's default size
+        # Set a fixed size based on the SVG's default size, scaled
         svg_size = self.renderer.defaultSize()
-        self.setFixedSize(svg_size)
+        scaled_size = QSize(int(svg_size.width() * SVG_SCALE), int(svg_size.height() * SVG_SCALE))
+        self.setFixedSize(scaled_size)
     
+    @override
     def paintEvent(self, event: QPaintEvent | None) -> None:
         """Custom paint event with high-quality rendering"""
         painter = QPainter(self)
         
-        # Fill background with 30% transparent (70% opaque)
-        painter.fillRect(self.rect(), QColor(128, 128, 128, 179))
+        # Fill background with transparency
+        alpha = int(255 * (1 - TRANSPARENCY))
+        painter.fillRect(self.rect(), QColor(128, 128, 128, alpha))
         
         # Enable all quality rendering hints
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
