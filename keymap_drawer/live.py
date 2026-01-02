@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Any, Iterator, cast, override
 
 import yaml
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGraphicsOpacityEffect
-from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtGui import QCloseEvent, QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
-from PyQt6.QtCore import QSize, Qt, QPoint, pyqtSignal, QObject, QTimer
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QGraphicsOpacityEffect
+from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtGui import QCloseEvent, QKeyEvent, QPainter, QShowEvent, QPaintEvent, QColor, QMouseEvent
+from PySide6.QtCore import QSize, Qt, QPoint, Signal, QObject, QTimer
 
 from keymap_drawer.config import Config
 from keymap_drawer.draw import KeymapDrawer
@@ -83,8 +83,8 @@ QT_KEY_MAP = {
 class KeyboardMonitor(QObject):
     """Monitor keyboard events using evdev in background thread"""
     
-    key_pressed: pyqtSignal = pyqtSignal(str)
-    key_released: pyqtSignal = pyqtSignal(str)
+    key_pressed: Signal = Signal(str)
+    key_released: Signal = Signal(str)
     
     def __init__(self):
         super().__init__()

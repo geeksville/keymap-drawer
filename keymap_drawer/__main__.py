@@ -16,7 +16,7 @@ from keymap_drawer import logger
 from keymap_drawer.config import Config, DrawConfig
 from keymap_drawer.draw import KeymapDrawer
 from keymap_drawer.keymap import KeymapData
-from keymap_drawer.live import live
+from keymap_drawer.live_preflight import has_pyqt6
 from keymap_drawer.parse import KanataKeymapParser, QmkJsonParser, ZmkKeymapParser
 
 
@@ -287,7 +287,16 @@ def main() -> None:
         case "dump-config":
             dump_config(args, config)
         case "live":
-            live(args, config)
+            if has_pyqt6():
+                from keymap_drawer.live import live # To avoide requiring Qt6 for all users
+                live(args, config)
+            else:
+                logger.error(
+                    "Live view requires PySide6 to be installed with all native dependencies. " +
+                    "Please install with: " +
+                    "\"pipx install keymap-drawer[live]\""
+                )
+                sys.exit(1)
 
 
 if __name__ == "__main__":
